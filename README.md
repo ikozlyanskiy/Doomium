@@ -69,6 +69,8 @@ Click the game to focus it. Middle-click over it to capture the mouse, then midd
 
 The game is drawn in a window over the PCB editor. The frame is part of the board; the game image isn't saved in the `.PcbDoc` or included in fabrication output. Rendering every frame as PCB primitives was too slow for this version.
 
+The local `feature/native-pcb-renderer` branch has a separate [native PCB rendering experiment](docs/native-renderer-experiment.md). It draws frames with PCB fills on mechanical layers. This path has not been tested in Altium yet; use a disposable board and keep the regular command for normal play.
+
 The image is 320×200, scaled to fit the frame. Rendering aims for 30 FPS; the counter shows what you're actually getting. Game logic runs at DOOM's usual 35 tics/s.
 
 ## Building

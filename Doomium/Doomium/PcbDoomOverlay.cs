@@ -17,6 +17,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     private readonly Func<DoomFrameBounds?> _liveBounds;
     private readonly Action _onFinished;
     private readonly GameSurface _surface;
+    private readonly PcbNativeFrameRenderer? _nativeRenderer;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly DoomRuntime _runtime;
     private readonly IntPtr _parent;
@@ -29,7 +30,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     private int _ticks;
 
     public PcbDoomOverlay(IPCB_Board board, DoomFrameBounds bounds,
-        Func<DoomFrameBounds?> liveBounds, Action onFinished)
+        Func<DoomFrameBounds?> liveBounds, Action onFinished, bool nativeRenderer = false)
     {
         if (!bounds.IsValid) throw new ArgumentException("Rectangle has no area.", nameof(bounds));
         _board = board;
@@ -39,8 +40,11 @@ internal sealed class PcbDoomOverlay : IDisposable
         _parent = new IntPtr(board.GetState_Window());
         if (_parent == IntPtr.Zero || !IsWindow(_parent))
             throw new InvalidOperationException("PCB document window is unavailable.");
+        _nativeRenderer = nativeRenderer ? new PcbNativeFrameRenderer(board) : null;
         _surface = new GameSurface(this);
-        _runtime = new DoomRuntime(_surface.SetFrame);
+        _runtime = new DoomRuntime(_nativeRenderer is null
+            ? _surface.SetFrame
+            : (rgba, width, height) => _nativeRenderer.Render(rgba, width, height, _bounds));
         _timer = new System.Windows.Forms.Timer { Interval = 15 };
         _timer.Tick += OnTick;
     }
@@ -51,10 +55,14 @@ internal sealed class PcbDoomOverlay : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(PcbDoomOverlay));
         _runtime.Start(wad);
+        _nativeRenderer?.Start();
         _surface.CreateControl();
         SetParent(_surface.Handle, _parent);
         if (GetParent(_surface.Handle) != _parent)
             throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
+        if (_nativeRenderer is not null &&
+            !SetLayeredWindowAttributes(_surface.Handle, 0, 1, 0x2))
+            throw new InvalidOperationException($"Cannot make native input surface transparent (Win32 {Marshal.GetLastWin32Error()}).");
         UpdatePosition();
         _surface.Show();
         _surface.Focus();
@@ -271,6 +279,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         _timer.Stop();
         _timer.Dispose();
         _runtime.Dispose();
+        _nativeRenderer?.Dispose();
         _surface.Dispose();
     }
 
@@ -288,6 +297,8 @@ internal sealed class PcbDoomOverlay : IDisposable
     private static extern uint GetWindowThreadProcessId(IntPtr handle, out uint processId);
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr handle, out NativeRect rect);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr handle, uint colorKey, byte alpha, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -316,6 +327,16 @@ internal sealed class PcbDoomOverlay : IDisposable
             TabStop = true;
             BackColor = Color.Black;
             Size = new Size(320, 200);
+        }
+
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var parameters = base.CreateParams;
+                if (_owner._nativeRenderer is not null) parameters.ExStyle |= 0x00080000;
+                return parameters;
+            }
         }
 
         public void SetFrame(byte[] rgba, int width, int height)
@@ -355,6 +376,11 @@ internal sealed class PcbDoomOverlay : IDisposable
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (_owner._nativeRenderer is not null)
+            {
+                e.Graphics.Clear(Color.Black);
+                return;
+            }
             e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.DrawImage(_bitmap, ClientRectangle,

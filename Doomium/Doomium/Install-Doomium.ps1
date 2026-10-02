@@ -65,6 +65,7 @@ function Assert-DoomiumResources {
         Where-Object { $_ -ne '' -and -not $_.StartsWith('//') })
     $pcb = Get-Content -LiteralPath $PcbResourcePath -Raw
     $launchers = @{}
+    $usedLaunchers = @{}
     $resourceIds = @{}
     $insertions = 0
 
@@ -99,6 +100,8 @@ function Assert-DoomiumResources {
         if ($resourceIds.ContainsKey($linkId)) { throw "Duplicate resource ID: $linkId" }
         $resourceIds[$linkId] = $true
         if (-not $launchers.ContainsKey($launcherId)) { throw "Undefined PLID: $launcherId" }
+        if ($usedLaunchers.ContainsKey($launcherId)) { throw "PLID used more than once: $launcherId" }
+        $usedLaunchers[$launcherId] = $true
 
         $escapedTarget = [regex]::Escape($targetId)
         $escapedReference = [regex]::Escape($referenceId)
@@ -112,8 +115,8 @@ function Assert-DoomiumResources {
         $i += 2
     }
 
-    if ($launchers.Count -ne 1 -or $insertions -ne 1) {
-        throw "Expected one PL definition and one Insertion; found $($launchers.Count) and $insertions."
+    if ($launchers.Count -lt 1 -or $launchers.Count -ne $insertions) {
+        throw "Every PL needs one Insertion; found $($launchers.Count) PL definitions and $insertions Insertions."
     }
 }
 
@@ -269,7 +272,7 @@ catch {
 
 Write-Host "Doomium $version installed: $destination"
 Write-Host "Backup: $backup"
-Write-Host 'Start Altium Designer, open a PcbDoc, select four tracks forming a rectangle, and use Tools > Convert > Rect to Doomium.'
+Write-Host 'Start Altium Designer, open a PcbDoc, select a rectangular fill or four tracks forming a rectangle, and use Tools > Convert > Rect to Doomium.'
 if (Test-Path -LiteralPath (Join-Path $destination 'freedoom2.wad')) {
     Write-Host 'Freedoom 2 IWAD found; playback can start without choosing a WAD.'
 }

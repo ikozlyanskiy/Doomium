@@ -39,6 +39,10 @@ try {
         'THIRD_PARTY_NOTICES.md' = (Join-Path $root 'THIRD_PARTY_NOTICES.md')
         'docs\assets\doomium-in-altium.png' = (Join-Path $root 'docs\assets\doomium-in-altium.png')
     }
+    $nativeExperimentDoc = Join-Path $root 'docs\native-renderer-experiment.md'
+    if (Test-Path -LiteralPath $nativeExperimentDoc -PathType Leaf) {
+        $items['docs\native-renderer-experiment.md'] = $nativeExperimentDoc
+    }
     foreach ($nameInZip in $items.Keys) {
         $source = $items[$nameInZip]
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Release file missing: $source" }

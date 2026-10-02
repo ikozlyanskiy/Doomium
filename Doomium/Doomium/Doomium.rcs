@@ -8,6 +8,20 @@ PL Doomium:RectToDoomium
     Description='Play DOOM in the selected PCB rectangle'
 End
 
+PL Doomium:RectToDoomiumNative
+    Command='Doomium:RectToDoomiumNative'
+    Caption='Rect to Doomium (native experiment)'
+    Image=''
+    Shortcut1=''
+    Shortcut2=''
+    Params=''
+    Description='Try DOOM drawn with PCB fill objects on mechanical layers'
+End
+
 Insertion Doomium_RectToDoomium_Insertion TargetID='MNPCB_Convert10' RefID0='MNPCB_Convert60' InsertType='After'
     Link Doomium_RectToDoomium_Link PLID='Doomium:RectToDoomium' End
+End
+
+Insertion Doomium_RectToDoomiumNative_Insertion TargetID='MNPCB_Convert10' RefID0='MNPCB_Convert65' InsertType='Before'
+    Link Doomium_RectToDoomiumNative_Link PLID='Doomium:RectToDoomiumNative' End
 End
