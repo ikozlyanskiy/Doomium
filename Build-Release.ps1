@@ -37,7 +37,7 @@ try {
         'README.md' = (Join-Path $root 'README.md')
         'LICENSE' = (Join-Path $root 'LICENSE')
         'THIRD_PARTY_NOTICES.md' = (Join-Path $root 'THIRD_PARTY_NOTICES.md')
-        'docs\assets\hero.svg' = (Join-Path $root 'docs\assets\hero.svg')
+        'docs\assets\doomium-in-altium.png' = (Join-Path $root 'docs\assets\doomium-in-altium.png')
     }
     foreach ($nameInZip in $items.Keys) {
         $source = $items[$nameInZip]

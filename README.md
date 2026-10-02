@@ -1,5 +1,7 @@
+<h1 align="center">Doomium</h1>
+
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="Doomium: DOOM inside a PCB frame" width="100%">
+  <img src="docs/assets/doomium-in-altium.png" alt="Doomium running inside a PCB frame in Altium Designer" width="741">
 </p>
 
 <p align="center">
