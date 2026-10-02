@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.doomium-*-backup*/
+**/.doomium-backup-*/
+**/*.before-*
+/.vendor-managed-doom-git-backup/
+/dist/
+*.wad
+*.WAD
+*.PcbDoc
+*.PrjPcb
+*.log

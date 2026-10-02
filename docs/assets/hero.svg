@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Doomium</title>
+  <desc id="desc">A stylized circuit board with a colorful Doom game window inside a PCB frame.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1">
+      <stop stop-color="#07151b"/>
+      <stop offset=".55" stop-color="#0a2027"/>
+      <stop offset="1" stop-color="#061016"/>
+    </linearGradient>
+    <linearGradient id="screen" x2="0" y2="1">
+      <stop stop-color="#27344d"/>
+      <stop offset=".55" stop-color="#b24a31"/>
+      <stop offset="1" stop-color="#281519"/>
+    </linearGradient>
+    <linearGradient id="titleFill" x2="0" y2="1">
+      <stop stop-color="#ffe9a6"/>
+      <stop offset=".55" stop-color="#ff9b48"/>
+      <stop offset="1" stop-color="#e84d35"/>
+    </linearGradient>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#5ba8a2" stroke-opacity=".09" stroke-width="1"/>
+    </pattern>
+    <filter id="glow"><feGaussianBlur stdDeviation="9"/></filter>
+    <clipPath id="viewport"><rect x="714" y="67" width="424" height="268" rx="2"/></clipPath>
+  </defs>
+  <rect width="1200" height="440" fill="url(#bg)"/>
+  <rect width="1200" height="440" fill="url(#grid)"/>
+  <g fill="none" stroke="#4dcbb8" stroke-opacity=".26" stroke-width="2">
+    <path d="M0 58H112L162 108H310M0 96H75L126 147H255M0 385H165L215 335H388M1200 38H1107L1055 90H972M1200 401H1054L1007 354H891"/>
+    <path d="M545 0V52L608 115V206M601 440V386L653 334V256M1171 0V66L1138 99M1069 440V376L1116 329"/>
+  </g>
+  <g fill="#4dcbb8" opacity=".55">
+    <circle cx="310" cy="108" r="4"/><circle cx="255" cy="147" r="4"/><circle cx="388" cy="335" r="4"/>
+    <circle cx="608" cy="206" r="4"/><circle cx="653" cy="256" r="4"/><circle cx="891" cy="354" r="4"/>
+  </g>
+  <path d="M57 82h70" stroke="#ff8b50" stroke-width="4"/>
+  <text x="57" y="126" fill="#a8d8d0" font-family="Arial,sans-serif" font-size="16" font-weight="700" letter-spacing="5">DOOM × PCB</text>
+  <text x="50" y="226" fill="#ff8446" opacity=".45" filter="url(#glow)" font-family="Arial Black,Arial,sans-serif" font-size="88" font-weight="900" letter-spacing="-5">DOOMIUM</text>
+  <text x="50" y="226" fill="url(#titleFill)" stroke="#612c27" stroke-width="1.5" paint-order="stroke" font-family="Arial Black,Arial,sans-serif" font-size="88" font-weight="900" letter-spacing="-5">DOOMIUM</text>
+  <text x="57" y="272" fill="#e9eee6" font-family="Arial,sans-serif" font-size="24">Play DOOM inside Altium Designer.</text>
+  <text x="57" y="305" fill="#91aaa8" font-family="Arial,sans-serif" font-size="17">A live game window that follows your PCB frame.</text>
+  <rect x="57" y="351" width="205" height="39" rx="4" fill="#d36337"/>
+  <text x="75" y="377" fill="#fff8e9" font-family="Arial,sans-serif" font-size="14" font-weight="700" letter-spacing="1">ALTIUM DESIGNER 25</text>
+  <rect x="688" y="41" width="476" height="333" rx="7" fill="#071319" stroke="#69cfc0" stroke-width="2"/>
+  <rect x="703" y="53" width="446" height="294" rx="3" fill="#132026" stroke="#f5a44c" stroke-width="3"/>
+  <g clip-path="url(#viewport)">
+    <rect x="714" y="67" width="424" height="268" fill="url(#screen)"/>
+    <path d="M714 164L824 109L904 171L1024 96L1138 153V223H714Z" fill="#4f3840"/>
+    <path d="M714 199L805 139L873 182L927 145L1008 182L1076 132L1138 180V275H714Z" fill="#8d4936"/>
+    <path d="M714 223L796 193L842 229L909 191L978 232L1042 189L1138 231V335H714Z" fill="#bc6740"/>
+    <path d="M714 276L848 237L895 265L953 233L1041 267L1138 238V335H714Z" fill="#573337"/>
+    <path d="M825 335L899 239H957L1032 335" fill="#2e252c"/>
+    <path d="M863 335L913 254H944L994 335" fill="#4b4147"/>
+    <path d="M914 335L924 274H934L944 335" fill="#d78354" opacity=".7"/>
+    <path d="M714 304H1138V335H714Z" fill="#211c25"/>
+    <path d="M714 304H1138" stroke="#e09461" stroke-width="3"/>
+    <path d="M914 178h21m-10-10v20" stroke="#eadabb" stroke-width="2"/>
+    <g fill="#f0bd68"><rect x="753" y="229" width="6" height="24"/><rect x="1092" y="222" width="7" height="29"/></g>
+  </g>
+  <rect x="713" y="348" width="426" height="16" fill="#0c1c21"/>
+  <text x="719" y="360" fill="#73d5c6" font-family="Consolas,monospace" font-size="10" letter-spacing="1">PCB FRAME  •  LIVE OVERLAY  •  30 FPS TARGET</text>
+  <circle cx="696" cy="53" r="4" fill="#ffb64e"/><circle cx="1157" cy="53" r="4" fill="#ffb64e"/>
+  <circle cx="696" cy="365" r="4" fill="#ffb64e"/><circle cx="1157" cy="365" r="4" fill="#ffb64e"/>
+</svg>
