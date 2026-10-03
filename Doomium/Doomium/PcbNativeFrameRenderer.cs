@@ -15,6 +15,9 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
     private readonly List<FillState> _states = [];
     private readonly List<bool> _visible = [];
     private readonly Stopwatch _statistics = Stopwatch.StartNew();
+    private IPCB_Fill? _sourceFill;
+    private bool _sourceWasHidden;
+    private bool _hasRendered;
     private long _renderMilliseconds;
     private int _frames;
     private bool _started;
@@ -41,6 +44,13 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
         _layers.AddRange(ChoosePalette(candidates));
         try
         {
+            if (_board.GetState_SelectecObjectCount() == 1 &&
+                _board.Internal_GetState_SelectecObject(0) is IPCB_Fill sourceFill)
+            {
+                _sourceFill = sourceFill;
+                _sourceWasHidden = sourceFill.IsHidden();
+                if (!_sourceWasHidden) _board.HidePCBObject(sourceFill);
+            }
             foreach (var choice in _layers)
             {
                 if (!choice.WasVisible)
@@ -75,6 +85,7 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
         }
         catch
         {
+            RestoreSourceFill();
             RestoreLayerVisibility();
             _layers.Clear();
             throw;
@@ -97,17 +108,19 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
                 throw new InvalidOperationException("Native frame exceeds the allocated PCB fill pool.");
             var fill = _fills[shown];
             var changed = false;
+            if (_states[shown] != placement)
+            {
+                if (_visible[shown]) _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
+                fill.BeginModify();
+                try { SetFill(fill, placement); }
+                finally { fill.EndModify(); }
+                _states[shown] = placement;
+                changed = true;
+            }
             if (!_visible[shown])
             {
                 _board.ShowPCBObject(fill);
                 _visible[shown] = true;
-                changed = true;
-            }
-            if (_states[shown] != placement)
-            {
-                _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
-                SetFill(fill, placement);
-                _states[shown] = placement;
                 changed = true;
             }
             if (changed) _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
@@ -122,7 +135,23 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
             _visible[i] = false;
         }
 
-        _board.Navigate_RedrawChangedObjectsInBoard();
+        if (!_hasRendered)
+        {
+            _board.ViewManager_FullUpdate();
+            _hasRendered = true;
+            if (shown > 0)
+            {
+                try
+                {
+                    var fill = _fills[0];
+                    DoomiumTrace.Write($"Native first fill: inBoard={fill.GetState_InBoard()}, " +
+                        $"hidden={fill.IsHidden()}, layerVisible={_board.GetState_LayerIsDisplayed(_layers[_states[0].Color].Layer)}, " +
+                        $"sourceHidden={_sourceFill?.IsHidden()}, bounds={_states[0]}.");
+                }
+                catch (Exception ex) { DoomiumTrace.Write("Native first-fill diagnostics failed: " + ex); }
+            }
+        }
+        else _board.Navigate_RedrawChangedObjectsInBoard();
 
         clock.Stop();
         _frames++;
@@ -214,6 +243,21 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
         catch (Exception ex) { DoomiumTrace.Write("Native view refresh failed: " + ex); }
     }
 
+    private void RestoreSourceFill()
+    {
+        if (_sourceFill is null) return;
+        try
+        {
+            if (!_sourceWasHidden)
+            {
+                _board.ShowPCBObject(_sourceFill);
+                _board.ViewManager_GraphicallyInvalidatePrimitive(_sourceFill);
+            }
+        }
+        catch (Exception ex) { DoomiumTrace.Write("Source rectangle restore failed: " + ex); }
+        _sourceFill = null;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -232,6 +276,7 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
             _fills.Clear();
             _states.Clear();
             _visible.Clear();
+            RestoreSourceFill();
             RestoreLayerVisibility();
         }
     }

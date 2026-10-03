@@ -29,6 +29,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     private bool _f1Down;
     private bool _tabDown;
     private int _ticks;
+    private string _lastInputState = "";
 
     public PcbDoomOverlay(IPCB_Board board, DoomFrameBounds bounds,
         Func<DoomFrameBounds?> liveBounds, Action onFinished, bool nativeRenderer = false)
@@ -210,6 +211,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         var screen = GetGameScreenRectangle();
         if (screen.IsEmpty) return;
         _mouseCaptured = true;
+        DoomiumTrace.Write("Mouse captured; native=" + (_nativeRenderer is not null));
         if (_nativeRenderer is null) _surface.Focus();
         Cursor.Hide();
         Cursor.Clip = screen;
@@ -220,6 +222,8 @@ internal sealed class PcbDoomOverlay : IDisposable
     {
         if (!_mouseCaptured) return;
         _mouseCaptured = false;
+        DoomiumTrace.Write("Mouse released");
+        _lastInputState = "";
         Cursor.Clip = Rectangle.Empty;
         Cursor.Show();
         _runtime.SetMouseButton(MouseButtons.Left, false);
@@ -267,9 +271,14 @@ internal sealed class PcbDoomOverlay : IDisposable
         _middleDown = middle;
         if (!_mouseCaptured) return true;
 
+        var pressed = new List<string>();
         foreach (var key in TrackedKeys)
         {
-            if (IsPressed((int)key)) _runtime.KeyDown((int)key);
+            if (IsPressed((int)key))
+            {
+                _runtime.KeyDown((int)key);
+                pressed.Add(key.ToString());
+            }
             else _runtime.KeyUp((int)key);
         }
         SpecialKey(Keys.F1, IsPressed((int)Keys.F1));
@@ -281,8 +290,18 @@ internal sealed class PcbDoomOverlay : IDisposable
             return false;
         }
         _escapeDown = escape;
-        _runtime.SetMouseButton(MouseButtons.Left, IsPressed(0x01));
-        _runtime.SetMouseButton(MouseButtons.Right, IsPressed(0x02));
+        var leftDown = IsPressed(0x01);
+        var rightDown = IsPressed(0x02);
+        _runtime.SetMouseButton(MouseButtons.Left, leftDown);
+        _runtime.SetMouseButton(MouseButtons.Right, rightDown);
+        if (leftDown) pressed.Add("LMB");
+        if (rightDown) pressed.Add("RMB");
+        var inputState = string.Join("+", pressed);
+        if (inputState != _lastInputState)
+        {
+            DoomiumTrace.Write("Input: " + (inputState.Length == 0 ? "idle" : inputState));
+            _lastInputState = inputState;
+        }
         TrackMouse();
         return true;
     }
