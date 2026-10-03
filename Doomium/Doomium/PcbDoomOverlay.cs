@@ -21,6 +21,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     private readonly System.Windows.Forms.Timer _timer;
     private readonly DoomRuntime _runtime;
     private readonly IntPtr _parent;
+    private Rectangle _nativeViewport;
     private bool _disposed;
     private bool _mouseCaptured;
     private bool _middleDown;
@@ -56,16 +57,19 @@ internal sealed class PcbDoomOverlay : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(PcbDoomOverlay));
         _runtime.Start(wad);
         _nativeRenderer?.Start();
-        _surface.CreateControl();
-        SetParent(_surface.Handle, _parent);
-        if (GetParent(_surface.Handle) != _parent)
-            throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
-        if (_nativeRenderer is not null &&
-            !SetLayeredWindowAttributes(_surface.Handle, 0, 1, 0x2))
-            throw new InvalidOperationException($"Cannot make native input surface transparent (Win32 {Marshal.GetLastWin32Error()}).");
+        if (_nativeRenderer is null)
+        {
+            _surface.CreateControl();
+            SetParent(_surface.Handle, _parent);
+            if (GetParent(_surface.Handle) != _parent)
+                throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
+        }
         UpdatePosition();
-        _surface.Show();
-        _surface.Focus();
+        if (_nativeRenderer is null)
+        {
+            _surface.Show();
+            _surface.Focus();
+        }
         _timer.Start();
     }
 
@@ -113,7 +117,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         var height = Math.Abs(y2 - y1);
         if (width < 2 || height < 2)
         {
-            _surface.Hide();
+            HideViewport();
             return;
         }
         if (!GetClientRect(_parent, out var client))
@@ -122,7 +126,7 @@ internal sealed class PcbDoomOverlay : IDisposable
             left + width - 4, top + height - 4);
         if (interior.Width < 2 || interior.Height < 2)
         {
-            _surface.Hide();
+            HideViewport();
             return;
         }
         var visible = Rectangle.Intersect(
@@ -130,7 +134,13 @@ internal sealed class PcbDoomOverlay : IDisposable
             new Rectangle(0, 0, client.Right, client.Bottom));
         if (visible.Width < 2 || visible.Height < 2)
         {
-            _surface.Hide();
+            HideViewport();
+            return;
+        }
+        if (_nativeRenderer is not null)
+        {
+            _nativeViewport = visible;
+            if (_mouseCaptured) Cursor.Clip = GetGameScreenRectangle();
             return;
         }
         _surface.SetViewport(visible, new RectangleF(
@@ -142,6 +152,27 @@ internal sealed class PcbDoomOverlay : IDisposable
             Cursor.Clip = _surface.RectangleToScreen(_surface.ClientRectangle);
         if (!_surface.Visible) _surface.Show();
         if (++_ticks % 30 == 0) _surface.BringToFront();
+    }
+
+    private void HideViewport()
+    {
+        if (_nativeRenderer is null) _surface.Hide();
+        else
+        {
+            _nativeViewport = Rectangle.Empty;
+            ReleaseMouseCapture();
+        }
+    }
+
+    private Rectangle GetGameScreenRectangle()
+    {
+        if (_nativeRenderer is null)
+            return _surface.RectangleToScreen(_surface.ClientRectangle);
+        if (_nativeViewport.IsEmpty) return Rectangle.Empty;
+        var origin = new NativePoint { X = _nativeViewport.Left, Y = _nativeViewport.Top };
+        if (!ClientToScreen(_parent, ref origin))
+            throw new InvalidOperationException($"Cannot locate PCB viewport (Win32 {Marshal.GetLastWin32Error()}).");
+        return new Rectangle(origin.X, origin.Y, _nativeViewport.Width, _nativeViewport.Height);
     }
 
     public void KeyDown(Keys key)
@@ -175,10 +206,12 @@ internal sealed class PcbDoomOverlay : IDisposable
             ReleaseMouseCapture();
             return;
         }
+        var screen = GetGameScreenRectangle();
+        if (screen.IsEmpty) return;
         _mouseCaptured = true;
-        _surface.Focus();
+        if (_nativeRenderer is null) _surface.Focus();
         Cursor.Hide();
-        Cursor.Clip = _surface.RectangleToScreen(_surface.ClientRectangle);
+        Cursor.Clip = screen;
         CenterMouse();
     }
 
@@ -195,15 +228,18 @@ internal sealed class PcbDoomOverlay : IDisposable
     public void TrackMouse()
     {
         if (!_mouseCaptured) return;
-        var center = _surface.PointToScreen(new Point(_surface.Width / 2, _surface.Height / 2));
+        var screen = GetGameScreenRectangle();
+        var center = new Point(screen.Left + screen.Width / 2, screen.Top + screen.Height / 2);
         var dx = Cursor.Position.X - center.X;
         if (dx != 0) _runtime.AddMouseDelta(dx);
         if (Cursor.Position != center) Cursor.Position = center;
     }
 
     private void CenterMouse()
-        => Cursor.Position = _surface.PointToScreen(
-            new Point(_surface.Width / 2, _surface.Height / 2));
+    {
+        var screen = GetGameScreenRectangle();
+        Cursor.Position = new Point(screen.Left + screen.Width / 2, screen.Top + screen.Height / 2);
+    }
 
     public void MiddleClick()
     {
@@ -225,7 +261,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         }
         var middle = IsPressed(0x04);
         if (middle && !_middleDown &&
-            (_mouseCaptured || _surface.RectangleToScreen(_surface.ClientRectangle).Contains(Cursor.Position)))
+            (_mouseCaptured || GetGameScreenRectangle().Contains(Cursor.Position)))
             ToggleMouseCapture();
         _middleDown = middle;
         if (!_mouseCaptured) return true;
@@ -298,12 +334,18 @@ internal sealed class PcbDoomOverlay : IDisposable
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr handle, out NativeRect rect);
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetLayeredWindowAttributes(IntPtr handle, uint colorKey, byte alpha, uint flags);
+    private static extern bool ClientToScreen(IntPtr handle, ref NativePoint point);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
     {
         public int Left, Top, Right, Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X, Y;
     }
 
     private sealed class GameSurface : Control
@@ -327,16 +369,6 @@ internal sealed class PcbDoomOverlay : IDisposable
             TabStop = true;
             BackColor = Color.Black;
             Size = new Size(320, 200);
-        }
-
-        protected override CreateParams CreateParams
-        {
-            get
-            {
-                var parameters = base.CreateParams;
-                if (_owner._nativeRenderer is not null) parameters.ExStyle |= 0x00080000;
-                return parameters;
-            }
         }
 
         public void SetFrame(byte[] rgba, int width, int height)
@@ -376,11 +408,6 @@ internal sealed class PcbDoomOverlay : IDisposable
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (_owner._nativeRenderer is not null)
-            {
-                e.Graphics.Clear(Color.Black);
-                return;
-            }
             e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.DrawImage(_bitmap, ClientRectangle,
