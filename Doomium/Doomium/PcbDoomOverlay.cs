@@ -17,7 +17,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     private readonly Func<DoomFrameBounds?> _liveBounds;
     private readonly Action _onFinished;
     private readonly GameSurface _surface;
-    private readonly PcbNativeFrameRenderer? _nativeRenderer;
+    private readonly IPcbFrameRenderer? _nativeRenderer;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly DoomRuntime _runtime;
     private readonly IntPtr _parent;
@@ -32,7 +32,8 @@ internal sealed class PcbDoomOverlay : IDisposable
     private string _lastInputState = "";
 
     public PcbDoomOverlay(IPCB_Board board, DoomFrameBounds bounds,
-        Func<DoomFrameBounds?> liveBounds, Action onFinished, bool nativeRenderer = false)
+        Func<DoomFrameBounds?> liveBounds, Action onFinished,
+        DoomiumRenderMode mode = DoomiumRenderMode.Window)
     {
         if (!bounds.IsValid) throw new ArgumentException("Rectangle has no area.", nameof(bounds));
         _board = board;
@@ -42,7 +43,12 @@ internal sealed class PcbDoomOverlay : IDisposable
         _parent = new IntPtr(board.GetState_Window());
         if (_parent == IntPtr.Zero || !IsWindow(_parent))
             throw new InvalidOperationException("PCB document window is unavailable.");
-        _nativeRenderer = nativeRenderer ? new PcbNativeFrameRenderer(board) : null;
+        _nativeRenderer = mode switch
+        {
+            DoomiumRenderMode.Fills => new PcbNativeFrameRenderer(board),
+            DoomiumRenderMode.Regions => new PcbRegionFrameRenderer(board),
+            _ => null
+        };
         _surface = new GameSurface(this);
         _runtime = new DoomRuntime(_nativeRenderer is null
             ? _surface.SetFrame
@@ -58,19 +64,26 @@ internal sealed class PcbDoomOverlay : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(PcbDoomOverlay));
         _runtime.Start(wad);
         _nativeRenderer?.Start(_bounds);
-        if (_nativeRenderer is null)
+        _surface.CreateControl();
+        SetParent(_surface.Handle, _parent);
+        if (GetParent(_surface.Handle) != _parent)
+            throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
+        if (_nativeRenderer is not null)
         {
-            _surface.CreateControl();
-            SetParent(_surface.Handle, _parent);
-            if (GetParent(_surface.Handle) != _parent)
-                throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
+            var style = GetWindowLongPtr(_surface.Handle, -20);
+            var layered = new IntPtr(style.ToInt64() | 0x00080000);
+            Marshal.SetLastPInvokeError(0);
+            if (SetWindowLongPtr(_surface.Handle, -20, layered) == IntPtr.Zero &&
+                Marshal.GetLastPInvokeError() != 0)
+                throw new InvalidOperationException($"Cannot enable native input surface (Win32 {Marshal.GetLastPInvokeError()}).");
+            if (!SetWindowPos(_surface.Handle, IntPtr.Zero, 0, 0, 0, 0, 0x27))
+                throw new InvalidOperationException($"Cannot update native input surface style (Win32 {Marshal.GetLastPInvokeError()}).");
+            if (!SetLayeredWindowAttributes(_surface.Handle, 0, 1, 0x2))
+                throw new InvalidOperationException($"Cannot make native input surface transparent (Win32 {Marshal.GetLastPInvokeError()}).");
         }
         UpdatePosition();
-        if (_nativeRenderer is null)
-        {
-            _surface.Show();
-            _surface.Focus();
-        }
+        _surface.Show();
+        _surface.Focus();
         _timer.Start();
     }
 
@@ -139,12 +152,7 @@ internal sealed class PcbDoomOverlay : IDisposable
             HideViewport();
             return;
         }
-        if (_nativeRenderer is not null)
-        {
-            _nativeViewport = visible;
-            if (_mouseCaptured) Cursor.Clip = GetGameScreenRectangle();
-            return;
-        }
+        if (_nativeRenderer is not null) _nativeViewport = visible;
         _surface.SetViewport(visible, new RectangleF(
             (visible.Left - left) * 320f / width,
             (visible.Top - top) * 200f / height,
@@ -158,8 +166,8 @@ internal sealed class PcbDoomOverlay : IDisposable
 
     private void HideViewport()
     {
-        if (_nativeRenderer is null) _surface.Hide();
-        else
+        _surface.Hide();
+        if (_nativeRenderer is not null)
         {
             _nativeViewport = Rectangle.Empty;
             ReleaseMouseCapture();
@@ -212,7 +220,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         if (screen.IsEmpty) return;
         _mouseCaptured = true;
         DoomiumTrace.Write("Mouse captured; native=" + (_nativeRenderer is not null));
-        if (_nativeRenderer is null) _surface.Focus();
+        _surface.Focus();
         Cursor.Hide();
         Cursor.Clip = screen;
         CenterMouse();
@@ -355,6 +363,14 @@ internal sealed class PcbDoomOverlay : IDisposable
     private static extern bool GetClientRect(IntPtr handle, out NativeRect rect);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ClientToScreen(IntPtr handle, ref NativePoint point);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr(IntPtr handle, int index);
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr(IntPtr handle, int index, IntPtr value);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetLayeredWindowAttributes(IntPtr handle, uint colorKey, byte alpha, uint flags);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect
@@ -428,6 +444,11 @@ internal sealed class PcbDoomOverlay : IDisposable
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (_owner._nativeRenderer is not null)
+            {
+                e.Graphics.Clear(Color.Black);
+                return;
+            }
             e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor;
             e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
             e.Graphics.DrawImage(_bitmap, ClientRectangle,

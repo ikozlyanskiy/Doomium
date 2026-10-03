@@ -20,7 +20,11 @@ var noisyPlan = NativeFramePlanner.Build(noisy, width, height, palette);
 if (noisyPlan.Rectangles.Count > 640)
     throw new Exception($"Object budget exceeded: {noisyPlan.Rectangles.Count}");
 CheckCoverage(noisyPlan);
-Console.WriteLine($"Native frame planner passed: solid, quadrants, noisy frame ({noisyPlan.Columns}x{noisyPlan.Rows}, {noisyPlan.Rectangles.Count} fills).");
+var detailedPlan = NativeFramePlanner.Build(noisy, width, height, palette, 5000);
+if (detailedPlan.Rectangles.Count > 5000 || detailedPlan.Columns <= noisyPlan.Columns)
+    throw new Exception("Region mode did not gain detail within its contour budget.");
+CheckCoverage(detailedPlan);
+Console.WriteLine($"Native frame planner passed: solid, quadrants, fills ({noisyPlan.Columns}x{noisyPlan.Rows}), regions ({detailedPlan.Columns}x{detailedPlan.Rows}).");
 
 void Check(Func<int, int, int> colorAt, int expectedRectangles)
 {

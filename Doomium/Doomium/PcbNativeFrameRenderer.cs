@@ -5,7 +5,7 @@ using PCB;
 
 namespace Doomium;
 
-internal sealed class PcbNativeFrameRenderer : IDisposable
+internal sealed class PcbNativeFrameRenderer : IPcbFrameRenderer
 {
     private const int PaletteSize = 12;
     private readonly IPCB_Board _board;

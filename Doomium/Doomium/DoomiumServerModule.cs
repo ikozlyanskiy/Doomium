@@ -19,13 +19,13 @@ public sealed class DoomiumServerModule : ServerModule
     protected override void InitializeCommands()
     {
         DoomiumTrace.Write("InitializeCommands entered");
-        void Register(string name, bool nativeRenderer)
+        void Register(string name, DoomiumRenderMode mode)
         {
             ((CommandLauncher)CommandLauncher).RegisterCommand(name,
                 (CommandProc)((RT_ClientServerInterface.IServerDocumentView view, StringBuilder parameters) =>
             {
                 DoomiumTrace.Write(name + " command invoked");
-                try { RectToDoomium(nativeRenderer); }
+                try { RectToDoomium(mode); }
                 catch (Exception ex)
                 {
                     DoomiumTrace.Write(name + " failed: " + ex);
@@ -35,12 +35,13 @@ public sealed class DoomiumServerModule : ServerModule
                 }
             }), null);
         }
-        Register("RectToDoomium", false);
-        Register("RectToDoomiumNative", true);
+        Register("RectToDoomium", DoomiumRenderMode.Window);
+        Register("RectToDoomiumNative", DoomiumRenderMode.Fills);
+        Register("RectToDoomiumRegions", DoomiumRenderMode.Regions);
         DoomiumTrace.Write("InitializeCommands complete");
     }
 
-    private static void RectToDoomium(bool nativeRenderer)
+    private static void RectToDoomium(DoomiumRenderMode mode)
     {
         if (_overlay is { IsRunning: true })
         {
@@ -62,13 +63,13 @@ public sealed class DoomiumServerModule : ServerModule
         }
         var wad = ResolveWad();
         if (wad is null) return;
-        DoomiumTrace.Write($"Starting {(nativeRenderer ? "native" : "overlay")} game in {bounds} with WAD {Path.GetFileName(wad)}");
+        DoomiumTrace.Write($"Starting {mode} game in {bounds} with WAD {Path.GetFileName(wad)}");
         _overlay?.Dispose();
         _overlay = new PcbDoomOverlay(board, bounds, liveBounds, () =>
         {
             _overlay?.Dispose();
             _overlay = null;
-        }, nativeRenderer);
+        }, mode);
         _overlay.Start(wad);
         DoomiumTrace.Write("Game overlay started");
     }

@@ -13,6 +13,10 @@ internal static class NativeFramePlanner
     public const int MaximumRectangles = 640;
     private static readonly (int Columns, int Rows)[] Sizes =
     [
+        (160, 100),
+        (128, 80),
+        (112, 70),
+        (96, 60),
         (80, 50),
         (64, 40),
         (48, 30),
