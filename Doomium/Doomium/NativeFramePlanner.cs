@@ -10,6 +10,7 @@ internal sealed record NativeFramePlan(int Columns, int Rows, IReadOnlyList<Nati
 
 internal static class NativeFramePlanner
 {
+    public const int MaximumRectangles = 640;
     private static readonly (int Columns, int Rows)[] Sizes =
     [
         (80, 50),
@@ -20,7 +21,7 @@ internal static class NativeFramePlanner
     ];
 
     public static NativeFramePlan Build(byte[] rgba, int width, int height,
-        IReadOnlyList<NativePaletteColor> palette, int maxRectangles = 640)
+        IReadOnlyList<NativePaletteColor> palette, int maxRectangles = MaximumRectangles)
     {
         if (width <= 0 || height <= 0 || rgba.Length < (long)width * height * 4)
             throw new ArgumentException("Invalid RGBA frame.", nameof(rgba));

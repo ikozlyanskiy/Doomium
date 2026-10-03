@@ -29,7 +29,7 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
             ?? throw new InvalidOperationException("PCB server is unavailable.");
     }
 
-    public void Start()
+    public void Start(DoomFrameBounds bounds)
     {
         if (_disposed) throw new ObjectDisposedException(nameof(PcbNativeFrameRenderer));
         if (_started) return;
@@ -46,9 +46,32 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
                 if (!choice.WasVisible)
                     _board.SetState_LayerIsDisplayed(choice.Layer, true);
             }
+            _pcb.PreProcess();
+            try
+            {
+                var placeholder = new FillState(
+                    bounds.Left, bounds.Bottom, bounds.Left + 1, bounds.Bottom + 1, 0);
+                for (var i = 0; i < NativeFramePlanner.MaximumRectangles; i++)
+                {
+                    var fill = _pcb.Internal_PCBObjectFactory(
+                        (int)TObjectId.eFillObject,
+                        (int)TDimensionKind.eNoDimension,
+                        (int)TObjectCreationMode.eCreate_Default) as IPCB_Fill
+                        ?? throw new InvalidOperationException("Altium did not create a PCB fill.");
+                    SetFill(fill, placeholder);
+                    fill.SetState_Selected(false);
+                    _board.AddPCBObject(fill);
+                    _fills.Add(fill);
+                    _states.Add(placeholder);
+                    _visible.Add(false);
+                    _board.DispatchMessage(_board, null, 2, fill);
+                    _board.HidePCBObject(fill);
+                }
+            }
+            finally { _pcb.PostProcess(); }
             _board.ViewManager_FullUpdate();
             _started = true;
-            DoomiumTrace.Write($"Native PCB renderer: {_layers.Count} mechanical-layer colors selected.");
+            DoomiumTrace.Write($"Native PCB renderer: {_layers.Count} mechanical-layer colors, {_fills.Count} fills allocated.");
         }
         catch
         {
@@ -64,68 +87,42 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
         var clock = Stopwatch.StartNew();
         var colors = _layers.Select(layer => layer.Color).ToArray();
         var plan = NativeFramePlanner.Build(rgba, width, height, colors);
-        var added = false;
         var shown = 0;
 
-        _pcb.PreProcess();
-        try
+        foreach (var rectangle in plan.Rectangles)
         {
-            foreach (var rectangle in plan.Rectangles)
+            var placement = MapRectangle(rectangle, plan, bounds);
+            if (placement.X2 <= placement.X1 || placement.Y2 <= placement.Y1) continue;
+            if (shown >= _fills.Count)
+                throw new InvalidOperationException("Native frame exceeds the allocated PCB fill pool.");
+            var fill = _fills[shown];
+            var changed = false;
+            if (!_visible[shown])
             {
-                var placement = MapRectangle(rectangle, plan, bounds);
-                if (placement.X2 <= placement.X1 || placement.Y2 <= placement.Y1) continue;
-                if (shown == _fills.Count)
-                {
-                    var fill = _pcb.Internal_PCBObjectFactory(
-                        (int)TObjectId.eFillObject,
-                        (int)TDimensionKind.eNoDimension,
-                        (int)TObjectCreationMode.eCreate_Default) as IPCB_Fill
-                        ?? throw new InvalidOperationException("Altium did not create a PCB fill.");
-                    SetFill(fill, placement);
-                    fill.SetState_Selected(false);
-                    _board.AddPCBObject(fill);
-                    _fills.Add(fill);
-                    _states.Add(placement);
-                    _visible.Add(true);
-                    _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
-                    added = true;
-                }
-                else
-                {
-                    var fill = _fills[shown];
-                    var changed = false;
-                    if (!_visible[shown])
-                    {
-                        _board.ShowPCBObject(fill);
-                        _visible[shown] = true;
-                        changed = true;
-                    }
-                    if (_states[shown] != placement)
-                    {
-                        _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
-                        fill.BeginModify();
-                        try { SetFill(fill, placement); }
-                        finally { fill.EndModify(); }
-                        _states[shown] = placement;
-                        changed = true;
-                    }
-                    if (changed) _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
-                }
-                shown++;
+                _board.ShowPCBObject(fill);
+                _visible[shown] = true;
+                changed = true;
             }
-
-            for (var i = shown; i < _fills.Count; i++)
+            if (_states[shown] != placement)
             {
-                if (!_visible[i]) continue;
-                _board.HidePCBObject(_fills[i]);
-                _board.ViewManager_GraphicallyInvalidatePrimitive(_fills[i]);
-                _visible[i] = false;
+                _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
+                SetFill(fill, placement);
+                _states[shown] = placement;
+                changed = true;
             }
+            if (changed) _board.ViewManager_GraphicallyInvalidatePrimitive(fill);
+            shown++;
         }
-        finally { _pcb.PostProcess(); }
 
-        if (added) _board.ViewManager_FullUpdate();
-        else _board.Navigate_RedrawChangedObjectsInBoard();
+        for (var i = shown; i < _fills.Count; i++)
+        {
+            if (!_visible[i]) continue;
+            _board.HidePCBObject(_fills[i]);
+            _board.ViewManager_GraphicallyInvalidatePrimitive(_fills[i]);
+            _visible[i] = false;
+        }
+
+        _board.Navigate_RedrawChangedObjectsInBoard();
 
         clock.Stop();
         _frames++;
@@ -223,18 +220,10 @@ internal sealed class PcbNativeFrameRenderer : IDisposable
         _disposed = true;
         try
         {
-            if (_fills.Count > 0)
+            foreach (var fill in _fills)
             {
-                _pcb.PreProcess();
-                try
-                {
-                    foreach (var fill in _fills)
-                    {
-                        try { _board.RemovePCBObject(fill); }
-                        catch (Exception ex) { DoomiumTrace.Write("Native fill removal failed: " + ex); }
-                    }
-                }
-                finally { _pcb.PostProcess(); }
+                try { _board.RemovePCBObject(fill); }
+                catch (Exception ex) { DoomiumTrace.Write("Native fill removal failed: " + ex); }
             }
         }
         catch (Exception ex) { DoomiumTrace.Write("Native renderer cleanup failed: " + ex); }

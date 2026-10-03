@@ -56,7 +56,7 @@ internal sealed class PcbDoomOverlay : IDisposable
     {
         if (_disposed) throw new ObjectDisposedException(nameof(PcbDoomOverlay));
         _runtime.Start(wad);
-        _nativeRenderer?.Start();
+        _nativeRenderer?.Start(_bounds);
         if (_nativeRenderer is null)
         {
             _surface.CreateControl();
@@ -99,6 +99,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         }
         catch (Exception ex)
         {
+            DoomiumTrace.Write("Game loop failed: " + ex);
             _onFinished();
             MessageBox.Show(ex.ToString(), "Doomium", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
