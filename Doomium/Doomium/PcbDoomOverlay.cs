@@ -30,6 +30,13 @@ internal sealed class PcbDoomOverlay : IDisposable
     private bool _tabDown;
     private int _ticks;
     private string _lastInputState = "";
+    private readonly bool[] _nativeKeys = new bool[256];
+    private HookProc? _keyboardProc;
+    private HookProc? _mouseProc;
+    private IntPtr _keyboardHook;
+    private IntPtr _mouseHook;
+    private bool _nativeLeftDown;
+    private bool _nativeRightDown;
 
     public PcbDoomOverlay(IPCB_Board board, DoomFrameBounds bounds,
         Func<DoomFrameBounds?> liveBounds, Action onFinished,
@@ -64,26 +71,23 @@ internal sealed class PcbDoomOverlay : IDisposable
         if (_disposed) throw new ObjectDisposedException(nameof(PcbDoomOverlay));
         _runtime.Start(wad);
         _nativeRenderer?.Start(_bounds);
-        _surface.CreateControl();
-        SetParent(_surface.Handle, _parent);
-        if (GetParent(_surface.Handle) != _parent)
-            throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
         if (_nativeRenderer is not null)
         {
-            var style = GetWindowLongPtr(_surface.Handle, -20);
-            var layered = new IntPtr(style.ToInt64() | 0x00080000);
-            Marshal.SetLastPInvokeError(0);
-            if (SetWindowLongPtr(_surface.Handle, -20, layered) == IntPtr.Zero &&
-                Marshal.GetLastPInvokeError() != 0)
-                throw new InvalidOperationException($"Cannot enable native input surface (Win32 {Marshal.GetLastPInvokeError()}).");
-            if (!SetWindowPos(_surface.Handle, IntPtr.Zero, 0, 0, 0, 0, 0x27))
-                throw new InvalidOperationException($"Cannot update native input surface style (Win32 {Marshal.GetLastPInvokeError()}).");
-            if (!SetLayeredWindowAttributes(_surface.Handle, 0, 1, 0x2))
-                throw new InvalidOperationException($"Cannot make native input surface transparent (Win32 {Marshal.GetLastPInvokeError()}).");
+            InstallNativeInputHooks();
+        }
+        else
+        {
+            _surface.CreateControl();
+            SetParent(_surface.Handle, _parent);
+            if (GetParent(_surface.Handle) != _parent)
+                throw new InvalidOperationException($"Cannot attach Doom display to PCB window (Win32 {Marshal.GetLastWin32Error()}).");
         }
         UpdatePosition();
-        _surface.Show();
-        _surface.Focus();
+        if (_nativeRenderer is null)
+        {
+            _surface.Show();
+            _surface.Focus();
+        }
         _timer.Start();
     }
 
@@ -152,16 +156,23 @@ internal sealed class PcbDoomOverlay : IDisposable
             HideViewport();
             return;
         }
-        if (_nativeRenderer is not null) _nativeViewport = visible;
-        _surface.SetViewport(visible, new RectangleF(
-            (visible.Left - left) * 320f / width,
-            (visible.Top - top) * 200f / height,
-            visible.Width * 320f / width,
-            visible.Height * 200f / height));
-        if (_mouseCaptured)
-            Cursor.Clip = _surface.RectangleToScreen(_surface.ClientRectangle);
-        if (!_surface.Visible) _surface.Show();
-        if (++_ticks % 30 == 0) _surface.BringToFront();
+        if (_nativeRenderer is not null)
+        {
+            _nativeViewport = visible;
+            if (_mouseCaptured) Cursor.Clip = GetGameScreenRectangle();
+        }
+        else
+        {
+            _surface.SetViewport(visible, new RectangleF(
+                (visible.Left - left) * 320f / width,
+                (visible.Top - top) * 200f / height,
+                visible.Width * 320f / width,
+                visible.Height * 200f / height));
+            if (_mouseCaptured)
+                Cursor.Clip = _surface.RectangleToScreen(_surface.ClientRectangle);
+            if (!_surface.Visible) _surface.Show();
+            if (++_ticks % 30 == 0) _surface.BringToFront();
+        }
     }
 
     private void HideViewport()
@@ -220,7 +231,7 @@ internal sealed class PcbDoomOverlay : IDisposable
         if (screen.IsEmpty) return;
         _mouseCaptured = true;
         DoomiumTrace.Write("Mouse captured; native=" + (_nativeRenderer is not null));
-        _surface.Focus();
+        if (_nativeRenderer is null) _surface.Focus();
         Cursor.Hide();
         Cursor.Clip = screen;
         CenterMouse();
@@ -236,6 +247,9 @@ internal sealed class PcbDoomOverlay : IDisposable
         Cursor.Show();
         _runtime.SetMouseButton(MouseButtons.Left, false);
         _runtime.SetMouseButton(MouseButtons.Right, false);
+        Array.Clear(_nativeKeys);
+        _nativeLeftDown = false;
+        _nativeRightDown = false;
     }
 
     public void TrackMouse()
@@ -272,34 +286,37 @@ internal sealed class PcbDoomOverlay : IDisposable
             SpecialKey(Keys.Tab, false);
             return true;
         }
-        var middle = IsPressed(0x04);
-        if (middle && !_middleDown &&
-            (_mouseCaptured || GetGameScreenRectangle().Contains(Cursor.Position)))
-            ToggleMouseCapture();
-        _middleDown = middle;
+        if (_nativeRenderer is null)
+        {
+            var middle = IsPressed(0x04);
+            if (middle && !_middleDown &&
+                (_mouseCaptured || GetGameScreenRectangle().Contains(Cursor.Position)))
+                ToggleMouseCapture();
+            _middleDown = middle;
+        }
         if (!_mouseCaptured) return true;
 
         var pressed = new List<string>();
         foreach (var key in TrackedKeys)
         {
-            if (IsPressed((int)key))
+            if (GameKeyPressed(key))
             {
                 _runtime.KeyDown((int)key);
                 pressed.Add(key.ToString());
             }
             else _runtime.KeyUp((int)key);
         }
-        SpecialKey(Keys.F1, IsPressed((int)Keys.F1));
-        SpecialKey(Keys.Tab, IsPressed((int)Keys.Tab));
-        var escape = IsPressed(0x1B);
+        SpecialKey(Keys.F1, GameKeyPressed(Keys.F1));
+        SpecialKey(Keys.Tab, GameKeyPressed(Keys.Tab));
+        var escape = GameKeyPressed(Keys.Escape);
         if (escape && !_escapeDown)
         {
             _onFinished();
             return false;
         }
         _escapeDown = escape;
-        var leftDown = IsPressed(0x01);
-        var rightDown = IsPressed(0x02);
+        var leftDown = _nativeRenderer is not null ? _nativeLeftDown : IsPressed(0x01);
+        var rightDown = _nativeRenderer is not null ? _nativeRightDown : IsPressed(0x02);
         _runtime.SetMouseButton(MouseButtons.Left, leftDown);
         _runtime.SetMouseButton(MouseButtons.Right, rightDown);
         if (leftDown) pressed.Add("LMB");
@@ -327,6 +344,77 @@ internal sealed class PcbDoomOverlay : IDisposable
     private static bool IsPressed(int virtualKey)
         => (GetAsyncKeyState(virtualKey) & 0x8000) != 0;
 
+    private bool GameKeyPressed(Keys key)
+        => _nativeRenderer is not null ? _nativeKeys[(int)key] : IsPressed((int)key);
+
+    private void InstallNativeInputHooks()
+    {
+        _keyboardProc = NativeKeyboardHook;
+        _mouseProc = NativeMouseHook;
+        var module = GetModuleHandle(null);
+        _keyboardHook = SetWindowsHookEx(13, _keyboardProc, module, 0);
+        if (_keyboardHook == IntPtr.Zero)
+            throw new InvalidOperationException($"Cannot capture Doom keyboard (Win32 {Marshal.GetLastWin32Error()}).");
+        _mouseHook = SetWindowsHookEx(14, _mouseProc, module, 0);
+        if (_mouseHook == IntPtr.Zero)
+            throw new InvalidOperationException($"Cannot capture Doom mouse (Win32 {Marshal.GetLastWin32Error()}).");
+    }
+
+    private IntPtr NativeKeyboardHook(int code, IntPtr message, IntPtr data)
+    {
+        try
+        {
+            if (code >= 0 && _mouseCaptured && IsAltiumForeground())
+            {
+                var vk = Marshal.ReadInt32(data);
+                if (vk is 0xA0 or 0xA1) vk = (int)Keys.ShiftKey;
+                if (vk is 0xA2 or 0xA3) vk = (int)Keys.ControlKey;
+                if (vk is >= 0 and < 256 &&
+                    (TrackedKeys.Contains((Keys)vk) || vk is (int)Keys.F1 or (int)Keys.Tab or (int)Keys.Escape))
+                {
+                    var kind = message.ToInt64();
+                    if (kind is 0x100 or 0x104) _nativeKeys[vk] = true;
+                    if (kind is 0x101 or 0x105) _nativeKeys[vk] = false;
+                    return new IntPtr(1);
+                }
+            }
+        }
+        catch (Exception ex) { DoomiumTrace.Write("Keyboard hook failed: " + ex); }
+        return CallNextHookEx(_keyboardHook, code, message, data);
+    }
+
+    private IntPtr NativeMouseHook(int code, IntPtr message, IntPtr data)
+    {
+        try
+        {
+            if (code >= 0 && IsAltiumForeground())
+            {
+                var kind = message.ToInt64();
+                var inside = _mouseCaptured || GetGameScreenRectangle().Contains(Cursor.Position);
+                if (inside && kind == 0x207)
+                {
+                    if (!_middleDown) ToggleMouseCapture();
+                    _middleDown = true;
+                    return new IntPtr(1);
+                }
+                if (inside && kind == 0x208)
+                {
+                    _middleDown = false;
+                    return new IntPtr(1);
+                }
+                if (_mouseCaptured)
+                {
+                    if (kind is 0x201 or 0x202) _nativeLeftDown = kind == 0x201;
+                    if (kind is 0x204 or 0x205) _nativeRightDown = kind == 0x204;
+                    if (kind is 0x201 or 0x202 or 0x204 or 0x205 or 0x20A)
+                        return new IntPtr(1);
+                }
+            }
+        }
+        catch (Exception ex) { DoomiumTrace.Write("Mouse hook failed: " + ex); }
+        return CallNextHookEx(_mouseHook, code, message, data);
+    }
+
     private static bool IsAltiumForeground()
     {
         var hwnd = GetForegroundWindow();
@@ -341,6 +429,10 @@ internal sealed class PcbDoomOverlay : IDisposable
         _disposed = true;
         ReleaseMouseCapture();
         _timer.Stop();
+        if (_keyboardHook != IntPtr.Zero) UnhookWindowsHookEx(_keyboardHook);
+        if (_mouseHook != IntPtr.Zero) UnhookWindowsHookEx(_mouseHook);
+        _keyboardHook = IntPtr.Zero;
+        _mouseHook = IntPtr.Zero;
         _timer.Dispose();
         _runtime.Dispose();
         _nativeRenderer?.Dispose();
@@ -363,14 +455,15 @@ internal sealed class PcbDoomOverlay : IDisposable
     private static extern bool GetClientRect(IntPtr handle, out NativeRect rect);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool ClientToScreen(IntPtr handle, ref NativePoint point);
-    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr GetWindowLongPtr(IntPtr handle, int index);
-    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
-    private static extern IntPtr SetWindowLongPtr(IntPtr handle, int index, IntPtr value);
+    private delegate IntPtr HookProc(int code, IntPtr message, IntPtr data);
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetLayeredWindowAttributes(IntPtr handle, uint colorKey, byte alpha, uint flags);
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(IntPtr handle, IntPtr after, int x, int y, int width, int height, uint flags);
+    private static extern IntPtr SetWindowsHookEx(int hook, HookProc callback, IntPtr module, uint threadId);
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr data);
+    [DllImport("user32.dll")]
+    private static extern bool UnhookWindowsHookEx(IntPtr hook);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr GetModuleHandle(string? moduleName);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect

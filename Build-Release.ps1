@@ -39,9 +39,14 @@ try {
         'THIRD_PARTY_NOTICES.md' = (Join-Path $root 'THIRD_PARTY_NOTICES.md')
         'docs\assets\doomium-in-altium.png' = (Join-Path $root 'docs\assets\doomium-in-altium.png')
     }
-    $nativeExperimentDoc = Join-Path $root 'docs\native-renderer-experiment.md'
-    if (Test-Path -LiteralPath $nativeExperimentDoc -PathType Leaf) {
-        $items['docs\native-renderer-experiment.md'] = $nativeExperimentDoc
+    $releaseNotes = "RELEASE_NOTES-v$version.md"
+    $releaseNotesPath = Join-Path $root $releaseNotes
+    if (Test-Path -LiteralPath $releaseNotesPath -PathType Leaf) {
+        $items[$releaseNotes] = $releaseNotesPath
+    }
+    $rendererDoc = Join-Path $root 'docs\renderers.md'
+    if (Test-Path -LiteralPath $rendererDoc -PathType Leaf) {
+        $items['docs\renderers.md'] = $rendererDoc
     }
     foreach ($nameInZip in $items.Keys) {
         $source = $items[$nameInZip]

@@ -272,7 +272,7 @@ catch {
 
 Write-Host "Doomium $version installed: $destination"
 Write-Host "Backup: $backup"
-Write-Host 'Start Altium Designer, open a PcbDoc, select a rectangular fill or four tracks forming a rectangle, and use Tools > Convert > Rect to Doomium.'
+Write-Host 'Start Altium Designer, open a PcbDoc, select a rectangular fill or four tracks forming a rectangle, and choose Doomium Original, Primitives, or Regions under Tools > Convert.'
 if (Test-Path -LiteralPath (Join-Path $destination 'freedoom2.wad')) {
     Write-Host 'Freedoom 2 IWAD found; playback can start without choosing a WAD.'
 }

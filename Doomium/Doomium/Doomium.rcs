@@ -1,6 +1,6 @@
 PL Doomium:RectToDoomium
     Command='Doomium:RectToDoomium'
-    Caption='Rect to Doomium'
+    Caption='Doomium Original'
     Image=''
     Shortcut1=''
     Shortcut2=''
@@ -10,22 +10,22 @@ End
 
 PL Doomium:RectToDoomiumNative
     Command='Doomium:RectToDoomiumNative'
-    Caption='Rect to Doomium (native experiment)'
+    Caption='Doomium Primitives'
     Image=''
     Shortcut1=''
     Shortcut2=''
     Params=''
-    Description='Try DOOM drawn with PCB fill objects on mechanical layers'
+    Description='Play DOOM with PCB fill primitives on mechanical layers'
 End
 
 PL Doomium:RectToDoomiumRegions
     Command='Doomium:RectToDoomiumRegions'
-    Caption='Rect to Doomium (regions preview)'
+    Caption='Doomium Regions'
     Image=''
     Shortcut1=''
     Shortcut2=''
     Params=''
-    Description='Try DOOM drawn with PCB regions on colored mechanical layers'
+    Description='Play DOOM with PCB regions on colored mechanical layers'
 End
 
 Insertion Doomium_RectToDoomium_Insertion TargetID='MNPCB_Convert10' RefID0='MNPCB_Convert60' InsertType='After'

@@ -3,7 +3,7 @@
 <p align="center">DOOM in Altium Designer. The PCB can wait.</p>
 
 <p align="center">
-  <img src="docs/assets/doomium-in-altium.png" alt="Doomium running inside a PCB frame in Altium Designer" width="741">
+  <img src="docs/assets/doomium-in-altium.png" alt="DOOM drawn with PCB objects inside an Altium Designer board" width="918">
 </p>
 
 <p align="center">
@@ -12,13 +12,13 @@
   <a href="#building">Build from source</a>
 </p>
 
-Doomium runs DOOM inside a frame on your board. Move the frame and the game follows it; delete the frame and the game closes.
+Doomium runs DOOM inside a frame on your board. Move the frame and the game follows it; delete the frame and the game closes. Pick a renderer: a crisp window, PCB fill primitives, or colored PCB regions.
 
 This version is for **Altium Designer 25 on Windows x64**. You'll also need a game WAD: [Freedoom](https://freedoom.github.io/) works, or you can use an IWAD from your own copy of DOOM. Game data isn't included in the download.
 
 ## Install
 
-1. Download [Doomium-v0.2.0-ad25-win-x64.zip](https://github.com/ikozlyanskiy/Doomium/releases/download/v0.2.0/Doomium-v0.2.0-ad25-win-x64.zip) and extract it.
+1. Download [Doomium-v0.3.0-ad25-win-x64.zip](https://github.com/ikozlyanskiy/Doomium/releases/download/v0.3.0/Doomium-v0.3.0-ad25-win-x64.zip) and extract it.
 2. Save your documents and close Altium.
 3. Open PowerShell in the extracted folder and run:
 
@@ -43,9 +43,11 @@ Add `-ValidateOnly` to check the paths and menu resources before installing.
 
 ## Make a frame
 
-Open a `.PcbDoc`, draw four connected tracks forming a rectangle, and select all four. Then choose **Tools → Convert → Rect to Doomium**.
+Open a `.PcbDoc`, draw four connected tracks forming a rectangle, and select all four. Then choose one of the three **Tools → Convert → Doomium** commands.
 
 There's a catch with Altium's **Place → Rectangle** tool: its grouped rectangle doesn't reliably expose its tracks to the plugin. Use **Tools → Convert → Explode Rectangle to Free Primitives** first, select the four tracks, and try again. A single rectangular fill works too. Keep the frame aligned with the board axes.
+
+**Doomium Original** draws the game in a window over the PCB. **Doomium Primitives** draws it with PCB fills; **Doomium Regions** uses colored PCB regions. The latter two change the board in memory while running. Try them on a spare `.PcbDoc` first and don't save during playback. [How the renderers work](docs/renderers.md).
 
 Click the game to focus it. Middle-click over it to capture the mouse, then middle-click again when you want your Altium pointer back. You can grab the exposed frame border to move it around.
 
@@ -62,16 +64,12 @@ Click the game to focus it. Middle-click over it to capture the mouse, then midd
 | Change weapon | `1`–`7` |
 | Automap | `Tab` |
 | Capture / release mouse | Middle mouse button over the game |
-| Show these controls | `F1` |
-| Stop | `Esc`, or run **Rect to Doomium** again |
+| Show these controls | `F1` in Original mode |
+| Stop | `Esc`, or run the active Doomium command again |
 
 ## A few details
 
-The game is drawn in a window over the PCB editor. The frame is part of the board; the game image isn't saved in the `.PcbDoc` or included in fabrication output. Rendering every frame as PCB primitives was too slow for this version.
-
-The local `feature/native-pcb-renderer` branch has a separate [native PCB rendering experiment](docs/native-renderer-experiment.md). It draws frames with PCB fills on mechanical layers. This path has not been tested in Altium yet; use a disposable board and keep the regular command for normal play.
-
-The image is 320×200, scaled to fit the frame. Rendering aims for 30 FPS; the counter shows what you're actually getting. Game logic runs at DOOM's usual 35 tics/s.
+Original mode draws a 320×200 image scaled to the frame, with an FPS counter and an `F1` help overlay. Its pixels aren't saved in the `.PcbDoc` or included in fabrication output. Native modes use mechanical layers and leave the original frame in place; they restore temporary objects, colors, names, and visibility when playback stops normally. Their FPS depends heavily on board complexity and scene detail. On the test machine, complex scenes in Regions ran in single-digit FPS. `%LOCALAPPDATA%\Doomium\doomium.log` records native frame rates.
 
 ## Building
 
@@ -96,8 +94,8 @@ DOOM прямо в Altium. Разводку платы можно ненадол
 
 Скачайте [ZIP из релиза](https://github.com/ikozlyanskiy/Doomium/releases/latest), распакуйте его и закройте Altium. В папке с файлами запустите `powershell -ExecutionPolicy Bypass -File .\Install-Doomium.ps1 -Prebuilt`. WAD выберите при первом запуске игры; подойдёт, например, Freedoom 2.
 
-Рамка пока должна состоять из четырёх дорожек. Если нарисовали её через **Place → Rectangle**, сначала выполните **Tools → Convert → Explode Rectangle to Free Primitives**. Выделите все четыре дорожки и выберите **Tools → Convert → Rect to Doomium**.
+Рамка пока должна состоять из четырёх дорожек. Если нарисовали её через **Place → Rectangle**, сначала выполните **Tools → Convert → Explode Rectangle to Free Primitives**. Выделите все четыре дорожки и выберите **Tools → Convert → Doomium Original**, **Doomium Primitives** или **Doomium Regions**. Подойдёт и один прямоугольный Fill.
 
-Средняя кнопка мыши включает и выключает захват. `WASD` — движение, ЛКМ — выстрел, ПКМ — открыть дверь или нажать кнопку, `Shift` — бег. Остальное подскажет `F1`. Выйти из игры — `Esc`.
+Средняя кнопка мыши включает и выключает захват. `WASD` — движение, ЛКМ — выстрел, ПКМ — открыть дверь или нажать кнопку, `Shift` — бег. В режиме Original подсказка открывается по `F1`. Выйти из игры — `Esc`. Режимы Primitives и Regions временно меняют открытую плату, поэтому сначала попробуйте их на отдельном `.PcbDoc` и не сохраняйте документ во время игры.
 
 </details>

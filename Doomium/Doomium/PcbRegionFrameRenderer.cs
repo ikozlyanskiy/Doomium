@@ -8,31 +8,9 @@ namespace Doomium;
 internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
 {
     private const int ContourBudget = 5000;
-    private static readonly (string Name, NativePaletteColor Color)[] Palette =
-    [
-        ("Black", new(9, 9, 10)),
-        ("Charcoal", new(39, 40, 40)),
-        ("Stone", new(82, 84, 82)),
-        ("Silver", new(163, 164, 156)),
-        ("Ivory", new(224, 216, 190)),
-        ("Umber", new(49, 34, 25)),
-        ("Brown", new(97, 66, 41)),
-        ("Tan", new(154, 119, 76)),
-        ("Sand", new(210, 176, 126)),
-        ("Maroon", new(86, 25, 22)),
-        ("Red", new(177, 42, 31)),
-        ("Orange", new(223, 111, 44)),
-        ("Gold", new(224, 191, 70)),
-        ("Olive", new(84, 91, 42)),
-        ("Green", new(108, 143, 69)),
-        ("Blue", new(59, 98, 144))
-    ];
-
     private readonly IPCB_Board _board;
     private readonly IPCB_ServerInterface _pcb;
-    private readonly IPCB_MasterLayerStack2 _stack;
-    private readonly IPCB_SystemOptions _options;
-    private readonly List<LayerState> _layers = [];
+    private PcbMechanicalPalette? _palette;
     private readonly List<IPCB_Region> _regions = [];
     private readonly List<bool> _visible = [];
     private readonly Stopwatch _statistics = Stopwatch.StartNew();
@@ -50,11 +28,6 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
             ?? throw new InvalidOperationException("Altium client is unavailable.");
         _pcb = client.GetServerModuleByName("PCB") as IPCB_ServerInterface
             ?? throw new InvalidOperationException("PCB server is unavailable.");
-        _stack = (board.Internal_GetState_LayerStack() as IPCB_MasterLayerStack2
-                  ?? board.Internal_GetState_LayerStack_V7() as IPCB_MasterLayerStack2)
-            ?? throw new InvalidOperationException("This PCB does not expose mechanical layer creation.");
-        _options = _pcb.Internal_GetState_SystemOptions() as IPCB_SystemOptions
-            ?? throw new InvalidOperationException("PCB layer color options are unavailable.");
     }
 
     public void Start(DoomFrameBounds bounds)
@@ -71,20 +44,13 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
                 if (!_sourceWasHidden) _board.HidePCBObject(sourceFill);
             }
 
+            _palette = new PcbMechanicalPalette(_board, _pcb);
             _pcb.PreProcess();
             try
             {
-                for (var i = 0; i < Palette.Length; i++)
+                for (var i = 0; i < _palette.Colors.Count; i++)
                 {
-                    var layer = _stack.Internal_AddMechanicalLayer() as IPCB_MechanicalLayer
-                        ?? throw new InvalidOperationException("Altium did not create a mechanical layer.");
-                    var v7 = layer.Internal_V7_LayerID();
-                    var oldColor = _options.GetState_LayerColors_V7(v7);
-                    _layers.Add(new LayerState(layer, v7, oldColor));
-                    layer.SetState_LayerName($"Doomium {i + 1:00} {Palette[i].Name}");
-                    layer.SetState_MechLayerEnabled(true);
-                    _options.SetState_LayerColors_V7(v7, ToColorRef(Palette[i].Color));
-                    _board.SetState_LayerIsDisplayed(v7, true);
+                    var v7 = _palette.Colors[i].Layer;
 
                     var region = _pcb.Internal_PCBObjectFactory(
                         (int)TObjectId.eRegionObject,
@@ -106,9 +72,7 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
             finally { _pcb.PostProcess(); }
             _board.ViewManager_FullUpdate();
             _started = true;
-            DoomiumTrace.Write($"Native region renderer: {_layers.Count} dedicated mechanical layers created.");
-            DoomiumTrace.Write($"Region color check: requested=0x{ToColorRef(Palette[0].Color):X6}, " +
-                $"board=0x{_board.GetState_ViewConfigColor2D(_layers[0].V7):X6}.");
+            DoomiumTrace.Write($"Native region renderer: {_palette.Colors.Count} mechanical layers prepared.");
         }
         catch
         {
@@ -121,10 +85,10 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
     {
         if (!_started || _disposed) return;
         var clock = Stopwatch.StartNew();
-        var colors = Palette.Select(entry => entry.Color).ToArray();
+        var colors = _palette!.Colors.Select(entry => entry.Color).ToArray();
         var plan = NativeFramePlanner.Build(rgba, width, height, colors, ContourBudget);
-        var polygons = new IPCB_GeometricPolygon?[Palette.Length];
-        var counts = new int[Palette.Length];
+        var polygons = new IPCB_GeometricPolygon?[colors.Length];
+        var counts = new int[colors.Length];
 
         foreach (var rect in plan.Rectangles)
         {
@@ -198,9 +162,6 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
         polygon.Internal_AddContourIsHole(contour, false);
     }
 
-    private static uint ToColorRef(NativePaletteColor color)
-        => (uint)(color.Red | color.Green << 8 | color.Blue << 16);
-
     public void Dispose()
     {
         if (_disposed) return;
@@ -212,19 +173,8 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
         }
         _regions.Clear();
         _visible.Clear();
-        for (var i = _layers.Count - 1; i >= 0; i--)
-        {
-            var state = _layers[i];
-            try { _options.SetState_LayerColors_V7(state.V7, state.OriginalColor); }
-            catch (Exception ex) { DoomiumTrace.Write("Region layer color restore failed: " + ex); }
-            try
-            {
-                if (!_stack.RemoveLayer(state.Layer))
-                    DoomiumTrace.Write("Region mechanical layer could not be removed: " + state.Layer.GetState_LayerName());
-            }
-            catch (Exception ex) { DoomiumTrace.Write("Region mechanical layer removal failed: " + ex); }
-        }
-        _layers.Clear();
+        _palette?.Dispose();
+        _palette = null;
         if (_sourceFill is not null)
         {
             try
@@ -238,5 +188,4 @@ internal sealed class PcbRegionFrameRenderer : IPcbFrameRenderer
         catch (Exception ex) { DoomiumTrace.Write("Region view refresh failed: " + ex); }
     }
 
-    private sealed record LayerState(IPCB_MechanicalLayer Layer, IV7_Layer V7, uint OriginalColor);
 }

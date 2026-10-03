@@ -15,6 +15,7 @@ internal sealed class PcbNativeFrameRenderer : IPcbFrameRenderer
     private readonly List<FillState> _states = [];
     private readonly List<bool> _visible = [];
     private readonly Stopwatch _statistics = Stopwatch.StartNew();
+    private PcbMechanicalPalette? _palette;
     private IPCB_Fill? _sourceFill;
     private bool _sourceWasHidden;
     private bool _hasRendered;
@@ -39,8 +40,11 @@ internal sealed class PcbNativeFrameRenderer : IPcbFrameRenderer
 
         var candidates = ReadMechanicalLayers();
         if (candidates.Count < 2)
-            throw new InvalidOperationException(
-                "Native renderer needs at least two mechanical layers with different colors.");
+        {
+            _palette = new PcbMechanicalPalette(_board, _pcb);
+            candidates = _palette.Colors.Select(entry =>
+                new LayerChoice(entry.Layer, entry.Color, true)).ToList();
+        }
         _layers.AddRange(ChoosePalette(candidates));
         try
         {
@@ -88,6 +92,8 @@ internal sealed class PcbNativeFrameRenderer : IPcbFrameRenderer
             RestoreSourceFill();
             RestoreLayerVisibility();
             _layers.Clear();
+            _palette?.Dispose();
+            _palette = null;
             throw;
         }
     }
@@ -278,6 +284,8 @@ internal sealed class PcbNativeFrameRenderer : IPcbFrameRenderer
             _visible.Clear();
             RestoreSourceFill();
             RestoreLayerVisibility();
+            _palette?.Dispose();
+            _palette = null;
         }
     }
 
